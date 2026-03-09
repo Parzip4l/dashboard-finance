@@ -67,35 +67,35 @@ const formatCurrency = (value) => {
 // --- COMPONENTS ---
 
 const BudgetSummaryCharts = ({ isLight, budgetTotals, financeData }) => {
-    
+
     // --- 1. DATA CHART ATAS (Total Penyerapan) ---
     // Menggunakan data yang sudah Anda hitung sebelumnya
-    const absorptionPercent = budgetTotals.penyerapan.persentase; 
+    const absorptionPercent = budgetTotals.penyerapan.persentase;
     const remainingPercent = 100 - absorptionPercent;
-    
+
     const data1 = [
         { name: 'Absorbed', value: absorptionPercent },
         { name: 'Remaining', value: remainingPercent },
     ];
-    
+
     // Warna Donut: Merah (LRT Style) & Abu-abu
-    const COLORS1 = ['#D3242B', isLight ? '#f1f5f9' : '#334155']; 
+    const COLORS1 = ['#D3242B', isLight ? '#f1f5f9' : '#334155'];
 
     // --- 2. DATA CHART BAWAH (Breakdown Performa OPEX vs CAPEX) ---
     // Kita perlu menghitung "Berapa % OPEX yang sudah terpakai?" bukan "Berapa % OPEX dari total anggaran"
-    
+
     // Ambil detail angka dari financeData (yang dikirim dari Parent)
     const totalData = financeData?.total_lrtj || {};
 
     // A. Hitung Performa OPEX
-    // Realisasi OPEX = Verifikasi + PPA
-    const opexBudget = totalData.anggaran_realokasi_2025_opex || 0;
+    // Fallback ke proposal jika realokasi kosong
+    const opexBudget = totalData.anggaran_realokasi_2025_opex || totalData.anggaran_proposal_opex || 0;
     const opexUsed = (totalData.opex_verifikasi_total || 0) + (totalData.opex_ppa_spuk_kk_total || 0);
-    // Rumus: (Terpakai / Pagu) * 100
     const opexPerformance = opexBudget > 0 ? (opexUsed / opexBudget) * 100 : 0;
 
     // B. Hitung Performa CAPEX
-    const capexBudget = totalData.anggaran_realokasi_2025_capex || 0;
+    // Fallback ke proposal jika realokasi kosong
+    const capexBudget = totalData.anggaran_realokasi_2025_capex || totalData.anggaran_proposal_capex || 0;
     const capexUsed = totalData.realisasi_capex_total || 0;
     const capexPerformance = capexBudget > 0 ? (capexUsed / capexBudget) * 100 : 0;
 
@@ -114,13 +114,13 @@ const BudgetSummaryCharts = ({ isLight, budgetTotals, financeData }) => {
                         {percent.toFixed(1)}%
                     </span>
                 </div>
-                
+
                 {/* Container Bar */}
                 <div className={`relative w-full h-4 rounded-full overflow-hidden ${isLight ? 'bg-slate-100' : 'bg-slate-800'}`}>
-                    
+
                     {/* Active Bar (Colored) */}
-                    <div 
-                        className={`absolute top-0 left-0 h-full rounded-full transition-all duration-700 ease-out flex items-center justify-end pr-2 ${colorClass}`} 
+                    <div
+                        className={`absolute top-0 left-0 h-full rounded-full transition-all duration-700 ease-out flex items-center justify-end pr-2 ${colorClass}`}
                         style={{ width: `${Math.min(percent, 100)}%` }}
                     >
                         {/* Teks DI DALAM (Hanya muncul jika bar cukup panjang) */}
@@ -134,7 +134,7 @@ const BudgetSummaryCharts = ({ isLight, budgetTotals, financeData }) => {
                     {/* Teks DI LUAR (Muncul jika bar terlalu pendek) */}
                     {!isTextInside && (
                         <div className="absolute top-0 left-0 w-full h-full flex items-center justify-end pr-2">
-                             <span className={`text-[9px] font-medium ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                            <span className={`text-[9px] font-medium ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                                 {valueText}
                             </span>
                         </div>
@@ -146,92 +146,92 @@ const BudgetSummaryCharts = ({ isLight, budgetTotals, financeData }) => {
 
     // Format Miliar helper kecil untuk display di bawah bar
     const toMiliar = (val) => (val / 1_000_000_000).toFixed(1) + ' M';
- 
+
     return (
-      <div className={`rounded-xl border shadow-sm p-3 flex flex-col h-auto min-h-[260px] transition-colors ${isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'}`}>
-        
-        {/* Header */}
-        <h2 className={`text-xs font-bold mb-3 uppercase border-b pb-0 flex items-center gap-1 ${isLight ? 'text-[#D3242B] border-slate-100' : 'text-[#F6821F] border-slate-800'}`}>
-            <PieChartIcon className="w-3.5 h-3.5" />
-            <span>Rasio Penyerapan Anggaran</span>
-        </h2>
+        <div className={`rounded-xl border shadow-sm p-3 flex flex-col h-auto min-h-[260px] transition-colors ${isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'}`}>
 
-        <div className="flex-1 flex flex-col gap-1">
-            
-            {/* BAGIAN 1: DONUT CHART (Total Penyerapan) */}
-            <div className="flex items-center justify-center py-2">
-                <div className="relative w-24 h-24">
-                    {/* Text Tengah Donut */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className={`text-md font-extrabold ${isLight ? 'text-[#D3242B]' : 'text-[#F6821F]'}`}>
-                            {absorptionPercent.toFixed(1)}%
-                        </span>
-                        <span className={`text-[9px] uppercase font-bold ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
-                            Total
-                        </span>
+            {/* Header */}
+            <h2 className={`text-xs font-bold mb-3 uppercase border-b pb-0 flex items-center gap-1 ${isLight ? 'text-[#D3242B] border-slate-100' : 'text-[#F6821F] border-slate-800'}`}>
+                <PieChartIcon className="w-3.5 h-3.5" />
+                <span>Rasio Penyerapan Anggaran</span>
+            </h2>
+
+            <div className="flex-1 flex flex-col gap-1">
+
+                {/* BAGIAN 1: DONUT CHART (Total Penyerapan) */}
+                <div className="flex items-center justify-center py-2">
+                    <div className="relative w-24 h-24">
+                        {/* Text Tengah Donut */}
+                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                            <span className={`text-md font-extrabold ${isLight ? 'text-[#D3242B]' : 'text-[#F6821F]'}`}>
+                                {absorptionPercent.toFixed(1)}%
+                            </span>
+                            <span className={`text-[9px] uppercase font-bold ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
+                                Total
+                            </span>
+                        </div>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie
+                                    data={data1}
+                                    dataKey="value"
+                                    innerRadius={32}
+                                    outerRadius={42}
+                                    startAngle={90}
+                                    endAngle={-270}
+                                    stroke="none"
+                                    cornerRadius={4}
+                                    paddingAngle={2}
+                                >
+                                    {data1.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={COLORS1[index % COLORS1.length]} />
+                                    ))}
+                                </Pie>
+                            </PieChart>
+                        </ResponsiveContainer>
                     </div>
-                    <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                            <Pie 
-                                data={data1} 
-                                dataKey="value" 
-                                innerRadius={32} 
-                                outerRadius={42} 
-                                startAngle={90}
-                                endAngle={-270}
-                                stroke="none"
-                                cornerRadius={4}
-                                paddingAngle={2}
-                            >
-                                {data1.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={COLORS1[index % COLORS1.length]} />
-                                ))}
-                            </Pie>
-                        </PieChart>
-                    </ResponsiveContainer>
-                </div>
-                
-                {/* Legend Sederhana di Samping */}
-                <div className="ml-4 flex flex-col justify-center gap-2">
-                     <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-full bg-[#D3242B]"></div>
-                        <div className="flex flex-col">
-                            <span className={`text-[10px] font-bold ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>Terserap</span>
+
+                    {/* Legend Sederhana di Samping */}
+                    <div className="ml-4 flex flex-col justify-center gap-2">
+                        <div className="flex items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full bg-[#D3242B]"></div>
+                            <div className="flex flex-col">
+                                <span className={`text-[10px] font-bold ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>Terserap</span>
+                            </div>
                         </div>
-                     </div>
-                     <div className="flex items-center gap-1.5">
-                        <div className={`w-2 h-2 rounded-full ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`}></div>
-                        <div className="flex flex-col">
-                            <span className={`text-[10px] font-bold ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>Sisa</span>
+                        <div className="flex items-center gap-1.5">
+                            <div className={`w-2 h-2 rounded-full ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`}></div>
+                            <div className="flex flex-col">
+                                <span className={`text-[10px] font-bold ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>Sisa</span>
+                            </div>
                         </div>
-                     </div>
+                    </div>
                 </div>
+
+                {/* Separator */}
+                <div className={`border-t border-dashed ${isLight ? 'border-slate-200' : 'border-slate-700'}`}></div>
+
+                {/* BAGIAN 2: PROGRESS BARS (Detail OPEX & CAPEX) */}
+                <div className="flex-1 flex flex-col justify-center pt-1">
+                    {/* Bar 1: OPEX (Biasanya Hijau/Teal) */}
+                    <ProgressBar
+                        label="Penyerapan OPEX"
+                        percent={opexPerformance}
+                        colorClass="bg-emerald-500"
+                        valueText={`${toMiliar(opexUsed)} / ${toMiliar(opexBudget)}`}
+                    />
+
+                    {/* Bar 2: CAPEX (Biasanya Biru) */}
+                    <ProgressBar
+                        label="Penyerapan CAPEX"
+                        percent={capexPerformance}
+                        colorClass="bg-blue-600"
+                        valueText={`${toMiliar(capexUsed)} / ${toMiliar(capexBudget)}`}
+                    />
+                </div>
+
             </div>
-
-            {/* Separator */}
-            <div className={`border-t border-dashed ${isLight ? 'border-slate-200' : 'border-slate-700'}`}></div>
-
-            {/* BAGIAN 2: PROGRESS BARS (Detail OPEX & CAPEX) */}
-            <div className="flex-1 flex flex-col justify-center pt-1">
-                {/* Bar 1: OPEX (Biasanya Hijau/Teal) */}
-                <ProgressBar 
-                    label="Penyerapan OPEX" 
-                    percent={opexPerformance} 
-                    colorClass="bg-emerald-500"
-                    valueText={`${toMiliar(opexUsed)} / ${toMiliar(opexBudget)}`}
-                />
-                
-                {/* Bar 2: CAPEX (Biasanya Biru) */}
-                <ProgressBar 
-                    label="Penyerapan CAPEX" 
-                    percent={capexPerformance} 
-                    colorClass="bg-blue-600"
-                    valueText={`${toMiliar(capexUsed)} / ${toMiliar(capexBudget)}`}
-                />
-            </div>
-
         </div>
-      </div>
     );
 };
 
@@ -609,11 +609,11 @@ const OnProgressKpis = ({ isLight, data }) => {
     const cardBg = isLight ? "bg-white" : "bg-slate-900";
     const borderColor = isLight ? "border-slate-200" : "border-slate-800";
     const labelColor = isLight ? "text-slate-500" : "text-slate-400";
-    
+
     return (
         <div className={`rounded-xl border shadow-sm overflow-hidden mb-0 ${cardBg} ${borderColor}`}>
             <div className="grid grid-cols-3 divide-x divide-slate-100 dark:divide-slate-800">
-                
+
                 {/* Item 1: Jumlah PR (Count) */}
                 <div className="p-3 flex flex-col justify-center items-center text-center">
                     <div className={`mb-1 p-1.5 rounded-full bg-slate-100 dark:bg-slate-800 ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
@@ -685,7 +685,7 @@ const OnProgressPO = ({ isLight, data }) => {
 
     return (
         <div className={`rounded-xl border shadow-sm overflow-hidden ${cardBg} ${borderColor}`}>
-            
+
             {/* HEADER SECTION: KEY METRICS (Total Sementara & Persentase) */}
             <div className="grid grid-cols-2 divide-x divide-slate-100 dark:divide-slate-700 border-b border-slate-100 dark:border-slate-700">
                 <div className="p-4 flex flex-col items-center justify-center text-center bg-gradient-to-b from-transparent to-emerald-50/30 dark:to-emerald-900/10">
@@ -727,7 +727,7 @@ const OnProgressPO = ({ isLight, data }) => {
 
             {/* FOOTER SECTION: HISTORIS & MASA DEPAN (Split Background) */}
             <div className={`grid grid-cols-2 border-t ${borderColor}`}>
-                
+
                 {/* Kiri: 2024 (Masa Lalu) */}
                 <div className={`p-3 ${sectionBg} border-r ${borderColor}`}>
                     <div className="flex items-center gap-2 mb-2 opacity-70">
@@ -784,10 +784,10 @@ const ProcurementStatusChart = ({ isLight, data }) => {
     // --- Styling Constants ---
     const gridColor = isLight ? '#e2e8f0' : '#334155';
     const textColor = isLight ? '#475569' : '#94a3b8';
-    
+
     // Warna spesifik untuk On Process (Orange untuk Value, Biru untuk Count)
-    const colorValue = "#f97316"; 
-    const colorCount = "#3b82f6"; 
+    const colorValue = "#f97316";
+    const colorCount = "#3b82f6";
 
     // --- Helpers (Diambil dari Reference Style) ---
     const formatAxisCurrency = (value) => value.toFixed(1);
@@ -835,9 +835,9 @@ const ProcurementStatusChart = ({ isLight, data }) => {
     const CustomLineLabel = (props) => {
         const { x, y, value } = props;
         if (!value || value === 0) return null;
-        
+
         // Posisi Box Label (di atas titik)
-        const yPosBox = y - 25; 
+        const yPosBox = y - 25;
         const yPosText = y - 16;
 
         return (
@@ -896,7 +896,7 @@ const ProcurementStatusChart = ({ isLight, data }) => {
                         barGap={8}
                     >
                         <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-                        
+
                         <XAxis
                             dataKey="kode"
                             fontSize={10}
@@ -943,26 +943,26 @@ const ProcurementStatusChart = ({ isLight, data }) => {
                         />
 
                         {/* Bar: On Process Value */}
-                        <Bar 
-                            yAxisId="left" 
-                            dataKey="on_proses_pengadaan" 
+                        <Bar
+                            yAxisId="left"
+                            dataKey="on_proses_pengadaan"
                             fill={colorValue}
                             barSize={24}
                             radius={[4, 4, 0, 0]}
-                            style={{ zIndex: 3 }} 
-                            >
-                                <LabelList content={<CustomBarLabel />} />
+                            style={{ zIndex: 3 }}
+                        >
+                            <LabelList content={<CustomBarLabel />} />
                         </Bar>
 
                         {/* Line: Ongoing Count */}
-                        <Line 
+                        <Line
                             yAxisId="right"
                             dataKey="ongoing_request"
                             stroke={colorCount}
                             strokeWidth={2}
                             dot={{ r: 4 }}
                             style={{ zIndex: 1 }}
-                            >
+                        >
                             <LabelList content={<CustomLineLabel />} />
                         </Line>
 
@@ -1035,30 +1035,30 @@ const DepartmentBudgetPerformanceChart = ({ isLight, data }) => {
     }, [currentPage, handleNext]);
 
     const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-        const data = allChartData.find(d => d.label === label);
-        if (!data) return null;
+        if (active && payload && payload.length) {
+            const data = allChartData.find(d => d.label === label);
+            if (!data) return null;
 
-        return (
-            <div className={`p-2 rounded-md shadow-lg ${isLight ? 'bg-white border border-slate-200' : 'bg-slate-800 border-slate-700'}`}>
-                <p className={`text-xs font-bold mb-1 ${isLight ? 'text-slate-900' : 'text-white'}`}>{data.label}</p>
+            return (
+                <div className={`p-2 rounded-md shadow-lg ${isLight ? 'bg-white border border-slate-200' : 'bg-slate-800 border-slate-700'}`}>
+                    <p className={`text-xs font-bold mb-1 ${isLight ? 'text-slate-900' : 'text-white'}`}>{data.label}</p>
 
-                <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                    <span className="font-semibold">Anggaran Awal:</span> {formatCurrency(data.anggaran_awal)}
-                </p>
+                    <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                        <span className="font-semibold">Anggaran Awal:</span> {formatCurrency(data.anggaran_awal)}
+                    </p>
 
-                <p className={`text-xs ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
-                    <span className="font-semibold">Anggaran Realokasi:</span> {formatCurrency(data.anggaran_realokasi)}
-                </p>
+                    <p className={`text-xs ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+                        <span className="font-semibold">Anggaran Realokasi:</span> {formatCurrency(data.anggaran_realokasi)}
+                    </p>
 
-                <p className="text-xs text-[#D3242B]">
-                    <span className="font-semibold">Penyerapan:</span> {formatCurrency(data.penyerapan_total)} ({data.penyerapan_persen.toFixed(1)}%)
-                </p>
-            </div>
-        );
-    }
-    return null;
-};
+                    <p className="text-xs text-[#D3242B]">
+                        <span className="font-semibold">Penyerapan:</span> {formatCurrency(data.penyerapan_total)} ({data.penyerapan_persen.toFixed(1)}%)
+                    </p>
+                </div>
+            );
+        }
+        return null;
+    };
 
     return (
         <div className={`rounded-lg p-3 h-full flex flex-col transition-colors ${isLight ? 'bg-white border border-slate-200 shadow-sm' : 'bg-slate-900 border border-slate-800'}`}>
@@ -1166,7 +1166,7 @@ const SavingsKpis = ({ isLight, data }) => {
     return (
         <div className={`rounded-xl border shadow-sm overflow-hidden mb-0 ${cardBg} ${borderColor}`}>
             <div className="grid grid-cols-3 divide-x divide-slate-100 dark:divide-slate-800">
-                
+
                 {/* Item 1: Total HPS (Anggaran/Pagu) - Biru */}
                 <div className="p-3 relative flex flex-col justify-between h-full">
                     <div className="absolute top-2 right-2 opacity-10">
@@ -1238,56 +1238,56 @@ const FinanceDashboard = () => {
 
     // --- 1. Centralized Data Fetching ---
     useEffect(() => {
-    const fetchData = async () => {
-        try {
-            // Fetch semua endpoint paralel
-            const [
-                financeRes,
-                procRes,
-                financeDeptRes,
-                procOnProcessRes,
-                procSummaryRes
-            ] = await Promise.all([
-                fetch(`${API_URL}/finance-data`),
-                fetch(`${API_URL}/procurement-data`),
-                fetch(`${API_URL}/finance-data-department`),
-                fetch(`${API_URL}/procurement/on-process`),
-                fetch(`${API_URL}/procurement/summary`)
-            ]);
+        const fetchData = async () => {
+            try {
+                // Fetch semua endpoint paralel
+                const [
+                    financeRes,
+                    procRes,
+                    financeDeptRes,
+                    procOnProcessRes,
+                    procSummaryRes
+                ] = await Promise.all([
+                    fetch(`${API_URL}/finance-data`),
+                    fetch(`${API_URL}/procurement-data`),
+                    fetch(`${API_URL}/finance-data-department`),
+                    fetch(`${API_URL}/procurement/on-process`),
+                    fetch(`${API_URL}/procurement/summary`)
+                ]);
 
-            if (!financeRes.ok) throw new Error('Gagal mengambil Data Finance');
-            if (!procRes.ok) throw new Error('Gagal mengambil Data Procurement');
-            if (!financeDeptRes.ok) throw new Error('Gagal mengambil Data Finance Department');
-            if (!procOnProcessRes.ok) throw new Error('Gagal mengambil Data Procurement On Process');
-            if (!procSummaryRes.ok) throw new Error('Gagal mengambil Data Procurement Summary');
+                if (!financeRes.ok) throw new Error('Gagal mengambil Data Finance');
+                if (!procRes.ok) throw new Error('Gagal mengambil Data Procurement');
+                if (!financeDeptRes.ok) throw new Error('Gagal mengambil Data Finance Department');
+                if (!procOnProcessRes.ok) throw new Error('Gagal mengambil Data Procurement On Process');
+                if (!procSummaryRes.ok) throw new Error('Gagal mengambil Data Procurement Summary');
 
-            const financeResult = await financeRes.json();
-            const procResult = await procRes.json();
-            const financeDeptResult = await financeDeptRes.json();
-            const procOnProcessResult = await procOnProcessRes.json();
-            const procurementResult = await procSummaryRes.json();
+                const financeResult = await financeRes.json();
+                const procResult = await procRes.json();
+                const financeDeptResult = await financeDeptRes.json();
+                const procOnProcessResult = await procOnProcessRes.json();
+                const procurementResult = await procSummaryRes.json();
 
-            setFinanceData(financeResult);
-            setProcurementData(procResult);
-            setFinanceDepartmentData(financeDeptResult);
-            setProcurementSummary(procurementResult);
-            // 🆕 hanya ambil bagian `pengadaan_status.divisi`
-            setProcurementOnProcess(procOnProcessResult.pengadaan_status?.divisi || []);
+                setFinanceData(financeResult);
+                setProcurementData(procResult);
+                setFinanceDepartmentData(financeDeptResult);
+                setProcurementSummary(procurementResult);
+                // 🆕 hanya ambil bagian `pengadaan_status.divisi`
+                setProcurementOnProcess(procOnProcessResult.pengadaan_status?.divisi || []);
 
-            setLastUpdated(new Date());
-            setError(null);
-        } catch (err) {
-            console.error("Fetch error:", err);
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    };
+                setLastUpdated(new Date());
+                setError(null);
+            } catch (err) {
+                console.error("Fetch error:", err);
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        };
 
-    fetchData();
-    const intervalId = setInterval(fetchData, 10000);
-    return () => clearInterval(intervalId);
-}, []);
+        fetchData();
+        const intervalId = setInterval(fetchData, 10000);
+        return () => clearInterval(intervalId);
+    }, []);
 
     // --- Timer Jam ---
     useEffect(() => {
@@ -1341,7 +1341,8 @@ const FinanceDashboard = () => {
     const kpiRealokasi = total_lrtj?.anggaran_realokasi_2025_total || 0;
 
     const kpiRealisasi = DataRealisasi;
-    const kpiPersenPenyerapan = category_totals?.OVERALL?.penyerapan_persen || 0;
+    // Prioritas: baca % dari TOTAL LRTJ (langsung dari Excel kolom BF), fallback ke category_totals
+    const kpiPersenPenyerapan = total_lrtj?.penyerapan_persen || category_totals?.OVERALL?.penyerapan_persen || 0;
     const kpiSisaAnggaran = category_totals?.OVERALL?.sisa_anggaran_total || 0;
 
     const capexData = total_lrtj?.realisasi_capex_total || 0;
@@ -1406,19 +1407,19 @@ const FinanceDashboard = () => {
     ]
 
     const breakdownPenyerapanValue = [
-        { 
+        {
             title: "Subsidi",
             value: Number(PenyerapanSubsidi).toFixed(2) + "%",
             icon: Wallet,
             color: isLight ? 'text-slate-900' : 'text-white'
         },
-        { 
+        {
             title: "Busdev",
             value: Number(PenyerapanBusdev).toFixed(2) + "%",
             icon: Wallet,
             color: isLight ? 'text-slate-900' : 'text-white'
         },
-        { 
+        {
             title: "Corporate Cost",
             value: Number(PenyerapanCorcost).toFixed(2) + "%",
             icon: Wallet,
@@ -1646,8 +1647,8 @@ const FinanceDashboard = () => {
                         {/* Left Column (lg:col-span-3) - (Kolom Status) */}
                         <div className="lg:col-span-3 flex flex-col gap-2 min-h-0">
 
-                            <BudgetSummaryCharts 
-                                isLight={isLight} 
+                            <BudgetSummaryCharts
+                                isLight={isLight}
                                 budgetTotals={budgetTotalsForPieChart}
                                 financeData={financeData}  // <--- JANGAN LUPA TAMBAHKAN INI
                             />
@@ -1658,8 +1659,8 @@ const FinanceDashboard = () => {
                                 data={realtimeOnProgressTotals}
                             />
 
-                            <SavingsKpis 
-                                isLight={isLight} 
+                            <SavingsKpis
+                                isLight={isLight}
                                 data={procurementSummary}
                             />
 
