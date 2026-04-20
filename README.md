@@ -71,3 +71,49 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+## Run locally on macOS without Docker
+
+Open separate terminals from the project root.
+
+### 1. Frontend
+
+```sh
+npm install
+npm run dev
+```
+
+Frontend runs on `http://localhost:8080`.
+
+### 2. Legacy backend
+
+```sh
+cd backend
+npm install
+npm run dev
+```
+
+Legacy backend runs on `http://127.0.0.1:5000`.
+
+### 3. ERP backend
+
+```sh
+cp backend_erp/.env.example backend_erp/.env
+npm run dev:erp
+```
+
+ERP backend runs on `http://127.0.0.1:5100`.
+
+### Notes
+
+- Vite dev server proxies `/api` to `http://127.0.0.1:5000`.
+- Vite dev server proxies `/api/erp` to `http://127.0.0.1:5100`.
+- You can override local targets with:
+
+```sh
+VITE_API_URL=/api
+VITE_LEGACY_API_TARGET=http://127.0.0.1:5000
+VITE_ERP_API_TARGET=http://127.0.0.1:5100
+```
+
+- `backend_erp` defaults to mock mode until Dynamics 365 credentials are filled in.

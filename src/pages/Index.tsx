@@ -34,6 +34,7 @@ const Loader2 = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" widt
 
 // --- Utility & Constants ---
 const AUTO_SLIDE_INTERVAL = 15000;
+const DASHBOARD_REFRESH_INTERVAL = 60000;
 const DEPARTMENTS_PER_SLIDE = 5;
 
 // Helper function to format a Date object
@@ -1229,65 +1230,81 @@ const FinanceDashboard = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [lastUpdated, setLastUpdated] = useState(null);
+    const currentYearValue = new Date().getFullYear();
+    const availableYears = [currentYearValue, currentYearValue - 1];
+    const [selectedYear, setSelectedYear] = useState(currentYearValue);
 
     // Fallback data imports
     const { total: budgetTotals } = departmentBudgetData;
     const { total: onProgressTotals } = staticProcurementData.pengadaan_status;
 
-    const API_URL = "/api";
+    const rawApiUrl = import.meta.env.VITE_API_URL;
+    const API_URL = !rawApiUrl || /https?:\/\/(127\.0\.0\.1|localhost):5000\/api\/?$/i.test(rawApiUrl)
+        ? "/api"
+        : rawApiUrl.replace(/\/$/, "");
+
+    const buildApiUrl = (path) => `${API_URL}${path}?year=${selectedYear}`;
 
     // --- 1. Centralized Data Fetching ---
     useEffect(() => {
-        const fetchData = async () => {
+        let isCancelled = false;
+
+        const fetchData = async (showLoader = false) => {
             try {
-                // Fetch semua endpoint paralel
+                if (showLoader) {
+                    setLoading(true);
+                }
+
                 const [
                     financeRes,
-                    procRes,
-                    financeDeptRes,
-                    procOnProcessRes,
-                    procSummaryRes
+                    procRes
                 ] = await Promise.all([
-                    fetch(`${API_URL}/finance-data`),
-                    fetch(`${API_URL}/procurement-data`),
-                    fetch(`${API_URL}/finance-data-department`),
-                    fetch(`${API_URL}/procurement/on-process`),
-                    fetch(`${API_URL}/procurement/summary`)
+                    fetch(buildApiUrl('/finance-data')),
+                    fetch(buildApiUrl('/procurement-data'))
                 ]);
 
                 if (!financeRes.ok) throw new Error('Gagal mengambil Data Finance');
                 if (!procRes.ok) throw new Error('Gagal mengambil Data Procurement');
-                if (!financeDeptRes.ok) throw new Error('Gagal mengambil Data Finance Department');
-                if (!procOnProcessRes.ok) throw new Error('Gagal mengambil Data Procurement On Process');
-                if (!procSummaryRes.ok) throw new Error('Gagal mengambil Data Procurement Summary');
 
                 const financeResult = await financeRes.json();
                 const procResult = await procRes.json();
-                const financeDeptResult = await financeDeptRes.json();
-                const procOnProcessResult = await procOnProcessRes.json();
-                const procurementResult = await procSummaryRes.json();
+
+                if (isCancelled) {
+                    return;
+                }
 
                 setFinanceData(financeResult);
                 setProcurementData(procResult);
-                setFinanceDepartmentData(financeDeptResult);
-                setProcurementSummary(procurementResult);
-                // 🆕 hanya ambil bagian `pengadaan_status.divisi`
-                setProcurementOnProcess(procOnProcessResult.pengadaan_status?.divisi || []);
-
+                setFinanceDepartmentData({
+                    overall_departments:
+                        financeResult?.grouped?.OVERALL?.length > 0
+                            ? financeResult.grouped.OVERALL
+                            : financeResult?.departments || [],
+                    slicer: financeResult?.slicer,
+                });
+                setProcurementSummary(procResult?.dashboardData?.summary_box || {});
+                setProcurementOnProcess(procResult?.procurementStatusData?.pengadaan_status?.divisi || []);
                 setLastUpdated(new Date());
                 setError(null);
             } catch (err) {
                 console.error("Fetch error:", err);
-                setError(err.message);
+                if (!isCancelled) {
+                    setError(err.message);
+                }
             } finally {
-                setLoading(false);
+                if (!isCancelled) {
+                    setLoading(false);
+                }
             }
         };
 
-        fetchData();
-        const intervalId = setInterval(fetchData, 10000);
-        return () => clearInterval(intervalId);
-    }, []);
+        fetchData(true);
+        const intervalId = setInterval(() => fetchData(false), DASHBOARD_REFRESH_INTERVAL);
+        return () => {
+            isCancelled = true;
+            clearInterval(intervalId);
+        };
+    }, [selectedYear]);
 
     // --- Timer Jam ---
     useEffect(() => {
@@ -1459,6 +1476,23 @@ const FinanceDashboard = () => {
                         </div>
                     </div>
                     <div className="flex items-center gap-4 mt-3 md:mt-0">
+                        <div className="flex flex-col items-end">
+                            <label htmlFor="dashboard-year" className="text-[10px] font-bold uppercase tracking-wide text-white/80">
+                                Tahun
+                            </label>
+                            <select
+                                id="dashboard-year"
+                                value={selectedYear}
+                                onChange={(event) => setSelectedYear(Number(event.target.value))}
+                                className="mt-1 rounded-md border border-white/20 bg-white/15 px-3 py-1 text-sm font-bold text-white outline-none transition-colors hover:bg-white/20"
+                            >
+                                {availableYears.map((year) => (
+                                    <option key={year} value={year} className="text-slate-900">
+                                        {year}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
                         <div className="text-right">
                             <div className="text-xl font-bold text-white">{currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
                             <div className="text-white/80 text-xs">{currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}</div>

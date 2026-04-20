@@ -22,3 +22,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Sensitive environment files
+.env
+backend/.env
+backend_erp/.env
+backend_erp/.env.example
+
+# Backend ERP workspace
+backend_erp/node_modules

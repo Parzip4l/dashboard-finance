@@ -1,0 +1,12 @@
+{
+  "name": "dashboard-finance-backend-erp",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "dev:once": "node src/server.js",
+    "dev:watch": "node --watch src/server.js",
+    "check": "node --check src/server.js"
+  }
+}

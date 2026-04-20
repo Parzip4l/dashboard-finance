@@ -1,0 +1,24 @@
+services:
+  backend_erp:
+    build:
+      context: .
+      target: backend-erp-prod
+    env_file:
+      - backend_erp/.env
+    environment:
+      NODE_ENV: production
+      ERP_BACKEND_PORT: "5100"
+      ERP_CORS_ORIGIN: "*"
+    ports:
+      - "5100:5100"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      target: frontend-prod
+    ports:
+      - "9060:9060"
+    depends_on:
+      - backend_erp
+    restart: unless-stopped
