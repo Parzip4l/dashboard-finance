@@ -8,6 +8,14 @@ import { inferOrg, pickFirst, toInteger, toIsoDate, toNumber } from './shared.js
 
 const FINANCE_CATEGORIES = ['SUBSIDI', 'BUSDEV', 'CORPORATE_COST'];
 const DISALLOWED_FINANCE_ORG_TOKENS = ['jakpro'];
+const RAB_CATEGORY_BY_CODE = new Map([
+  ['S', 'SUBSIDI'],
+  ['B', 'BUSDEV'],
+  ['N', 'CORPORATE_COST'],
+]);
+const APPROVED_STATUS_TOKENS = ['approved', 'approve'];
+const REVISION_TOKENS = ['revision', 'revisi'];
+const PROPOSAL_TOKENS = ['proposal'];
 const FINANCE_CATEGORY_BY_DIVISION = new Map([
   ['business development division', 'BUSDEV'],
   ['operation & services division', 'SUBSIDI'],
@@ -62,6 +70,90 @@ const FINANCE_CATEGORY_BY_DEPARTMENT = new Map([
 
 function normalizeText(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+function normalizeFieldName(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function hasValue(value) {
+  return value !== null && value !== undefined && value !== '';
+}
+
+function pickFlexible(record, keys, fallback = null) {
+  const entries = Object.entries(record || {});
+
+  for (const key of keys) {
+    if (hasValue(record?.[key])) {
+      return record[key];
+    }
+
+    const normalizedKey = normalizeFieldName(key);
+    const matchedEntry = entries.find(([entryKey, entryValue]) => {
+      return normalizeFieldName(entryKey) === normalizedKey && hasValue(entryValue);
+    });
+
+    if (matchedEntry) {
+      return matchedEntry[1];
+    }
+  }
+
+  return fallback;
+}
+
+function extractDigits(value) {
+  const matched = String(value || '').match(/-?\d+/);
+  return matched ? Number.parseInt(matched[0], 10) : null;
+}
+
+function textIncludesAny(value, tokens) {
+  const normalized = normalizeText(value);
+  return tokens.some((token) => normalized.includes(token));
+}
+
+function categoryFromRabCode(value) {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (!normalized) {
+    return null;
+  }
+
+  const direct = RAB_CATEGORY_BY_CODE.get(normalized);
+  if (direct) {
+    return direct;
+  }
+
+  const firstLetter = normalized[0];
+  return RAB_CATEGORY_BY_CODE.get(firstLetter) || null;
+}
+
+function extractRabCode(record) {
+  const direct = pickFlexible(
+    record,
+    ['rab_code', 'RABCode', 'RAB', 'KodeRAB', 'Kode RAB', 'LedgerDimensionRAB', 'Ledger dimension RAB'],
+    null
+  );
+
+  if (hasValue(direct)) {
+    return String(direct).trim().toUpperCase();
+  }
+
+  const dimensionText = pickFlexible(
+    record,
+    [
+      'LedgerDimensionDisplayValue',
+      'DefaultDimensionDisplayValue',
+      'LedgerDimension',
+      'BudgetDimension',
+      'DimensionDisplayValue',
+      'ledger_dimension_display',
+    ],
+    ''
+  );
+  const matched = String(dimensionText || '').match(/\b([BSN])\b/);
+  return matched ? matched[1].toUpperCase() : null;
 }
 
 function yearFromOffset(value) {
@@ -309,12 +401,17 @@ function normalizeBudgetHeaders(records, syncAt) {
       ...org,
       budget_type: pickFirst(record, ['BudgetType', 'budgetType', 'BudgetModelType', 'Type', 'BudgetModel'], 'UNKNOWN'),
       scenario: pickFirst(record, ['Scenario', 'BudgetScenario', 'VersionType', 'Version', 'TransType'], 'PROPOSAL'),
+      version_number: toInteger(
+        pickFlexible(record, ['VersionNumber', 'VersionNo', 'VersionSequence', 'RevisionNumber'], null),
+        extractDigits(pickFirst(record, ['Version', 'Scenario', 'BudgetScenario'], null))
+      ),
       account_code: pickFirst(record, ['MainAccountId', 'AccountCode', 'MainAccount', 'BudgetCode'], null),
       account_name: pickFirst(
         record,
         ['MainAccountName', 'AccountName', 'MainAccountDescription', 'DepartmentName', 'DivisionName'],
         null
       ),
+      rab_code: extractRabCode(record),
       amount: pickBudgetHeaderAmount(record),
       proposal_capex_amount: toNumber(pickFirst(record, ['TotalCapex'], 0)),
       proposal_opex_amount: toNumber(pickFirst(record, ['TotalOpex'], 0)),
@@ -364,12 +461,17 @@ function normalizeBudgetLines(records, syncAt) {
       division_name: pickFirst(record, ['ActDivision'], org.division_name),
       budget_type: pickFirst(record, ['BudgetType', 'LineType', 'BudgetModelType', 'Type', 'CalcType'], 'UNKNOWN'),
       scenario: pickFirst(record, ['Scenario', 'BudgetScenario', 'VersionType', 'Version'], 'PROPOSAL'),
+      version_number: toInteger(
+        pickFlexible(record, ['VersionNumber', 'VersionNo', 'VersionSequence', 'RevisionNumber'], null),
+        extractDigits(pickFirst(record, ['Version', 'Scenario', 'BudgetScenario'], null))
+      ),
       account_code: pickFirst(record, ['BudgetCode', 'MainAccountId', 'AccountCode', 'MainAccount'], null),
       account_name: pickFirst(
         record,
         ['CodeName', 'Descriptions', 'MainAccountName', 'AccountName', 'MainAccountDescription'],
         null
       ),
+      rab_code: extractRabCode(record),
       amount: toNumber(
         pickFirst(record, ['TotalPrice', 'TotalPeriod', 'Amount', 'LineAmount', 'BudgetAmount'], 0)
       ),
@@ -487,7 +589,227 @@ function normalizeLedgerActivities(records, syncAt, lookups = {}) {
   });
 }
 
-function buildFinanceDashboardContract(budgetHeaders, budgetLines, ledgerActivities, options = {}) {
+function inferBudgetControlOrg(record) {
+  const baseOrg = inferFinanceOrg(record);
+
+  return {
+    ...baseOrg,
+    department_code: pickFlexible(
+      record,
+      ['ActDepartmentCode', 'DepartmentCode', 'Department', 'J01_Department', 'P01_Departemen', 'I03_Department'],
+      baseOrg.department_code
+    ),
+    department_name: pickFlexible(
+      record,
+      ['ActDepartment', 'DepartmentName', 'DepartmentDescription'],
+      baseOrg.department_name
+    ),
+    division_code: pickFlexible(
+      record,
+      ['DivisionCode', 'D02_Divisi', 'L01_Division', 'I01_BusinessUnit', 'P02_SBU'],
+      baseOrg.division_code
+    ),
+    division_name: pickFlexible(record, ['ActDivision', 'DivisionName', 'BusinessUnitName'], baseOrg.division_name),
+  };
+}
+
+function classifyBudgetControlCategory(record) {
+  const categoryFromCode = categoryFromRabCode(
+    extractRabCode(record) ||
+      pickFlexible(record, ['BudgetCode', 'budget_type', 'account_code', 'account_name'], null)
+  );
+  if (categoryFromCode) {
+    return categoryFromCode;
+  }
+
+  const textBlob = [
+    record.department_name,
+    record.division_name,
+    record.account_name,
+    record.ledger_dimension_display,
+    record.account_code,
+    record.budget_type,
+  ]
+    .map(normalizeText)
+    .join(' ');
+
+  if (textBlob.includes('corporate cost')) {
+    return 'CORPORATE_COST';
+  }
+
+  if (textBlob.includes('busdev') || textBlob.includes('business development')) {
+    return 'BUSDEV';
+  }
+
+  if (textBlob.includes('subsidi') || textBlob.includes('subsidy')) {
+    return 'SUBSIDI';
+  }
+
+  return classifyFinanceCategory(record);
+}
+
+function classifyBudgetControlBucket(record) {
+  const mainAccount = String(record.account_code || '').trim();
+  const accountText = `${mainAccount} ${record.account_name || ''} ${record.ledger_dimension_display || ''}`.toLowerCase();
+
+  if (/^1\d*/.test(mainAccount)) {
+    return 'CAPEX';
+  }
+
+  if (accountText.includes('verifikasi')) {
+    return 'VERIFIKASI';
+  }
+
+  return 'PPA_SPUK_KK';
+}
+
+function normalizeBudgetControlStatistics(records, syncAt) {
+  return records.map((record, index) => {
+    const org = inferBudgetControlOrg(record);
+    const derivedPeriod = derivePeriodFromDate(
+      pickFlexible(record, ['AccountingDate', 'PostingDate', 'CreatedDateTime', 'ApprovedDateTime'], null)
+    );
+
+    const actualAmount = toNumber(
+      pickFlexible(
+        record,
+        [
+          'ConsumedAmount',
+          'ActualAmount',
+          'UsedBudgetFunds',
+          'UsedAmount',
+          'Amount',
+          'AccountingCurrencyAmount',
+        ],
+        0
+      ),
+      0
+    );
+    const availableAmount = toNumber(
+      pickFlexible(
+        record,
+        [
+          'TotalBudgetFundsAvailable',
+          'BudgetFundsAvailable',
+          'AvailableBudgetFunds',
+          'RemainingBudgetFunds',
+          'RemainingAmount',
+        ],
+        0
+      ),
+      0
+    );
+    const absorptionPercent = toNumber(
+      pickFlexible(record, ['Percentage', 'UtilizationPercent', 'PenyerapanPercent'], null),
+      null
+    );
+
+    const normalized = {
+      source_id:
+        pickFlexible(record, ['RecId', 'Id', 'BudgetControlStatisticId'], null) || `bcs:${index + 1}`,
+      source_table: 'Budget Control Statistic',
+      fiscal_year: toInteger(pickFlexible(record, ['FiscalYear', 'BudgetYear', 'Year'], derivedPeriod.fiscalYear)),
+      period_month: toInteger(pickFlexible(record, ['PeriodMonth', 'Month'], derivedPeriod.periodMonth)),
+      ...org,
+      version: pickFlexible(record, ['Version', 'Scenario', 'BudgetScenario'], null),
+      version_number: toInteger(
+        pickFlexible(record, ['VersionNumber', 'VersionNo', 'VersionSequence', 'RevisionNumber'], null),
+        extractDigits(pickFlexible(record, ['Version', 'Scenario'], null))
+      ),
+      status: pickFlexible(record, ['ApprovalStatus', 'Status', 'WorkflowStatus'], null),
+      account_code: pickFlexible(record, ['MainAccountId', 'MainAccount', 'BudgetCode', 'AccountCode'], null),
+      account_name: pickFlexible(record, ['MainAccountName', 'AccountName'], null),
+      budget_type: pickFlexible(record, ['BudgetModel', 'BudgetType', 'Type'], null),
+      ledger_dimension: pickFlexible(record, ['LedgerDimension'], null),
+      ledger_dimension_display: pickFlexible(
+        record,
+        ['LedgerDimensionDisplayValue', 'DefaultDimensionDisplayValue', 'DimensionDisplayValue'],
+        null
+      ),
+      rab_code: extractRabCode(record),
+      actual_amount: actualAmount,
+      available_amount: availableAmount,
+      absorption_percent: absorptionPercent,
+      sync_at: syncAt,
+    };
+
+    return {
+      ...normalized,
+      category: classifyBudgetControlCategory(normalized),
+      actual_bucket: classifyBudgetControlBucket(normalized),
+    };
+  });
+}
+
+function isScenarioRecord(record, tokens) {
+  return textIncludesAny(record.scenario || record.version || record.budget_type, tokens);
+}
+
+function isApprovedRecord(record) {
+  return textIncludesAny(record.status, APPROVED_STATUS_TOKENS);
+}
+
+function buildVersionGroupKey(record) {
+  return [record.header_id, record.document_no, record.department_code, record.division_code, record.rab_code]
+    .filter(Boolean)
+    .join('::');
+}
+
+function selectLatestRevisionRecords(records) {
+  const approvedRevisions = records.filter((record) => isScenarioRecord(record, REVISION_TOKENS) && isApprovedRecord(record));
+  if (!approvedRevisions.length) {
+    return [];
+  }
+
+  const grouped = new Map();
+
+  for (const record of approvedRevisions) {
+    const groupKey = buildVersionGroupKey(record) || `ungrouped:${record.source_id}`;
+    const current = grouped.get(groupKey);
+
+    if (!current || (record.version_number || 0) >= (current.version_number || 0)) {
+      grouped.set(groupKey, record);
+    }
+  }
+
+  return Array.from(grouped.values());
+}
+
+function createDepartmentRow(record) {
+  return {
+    department_code: record.department_code || record.division_code || record.company_code || 'UNK',
+    department_name: record.department_name || record.division_name || record.account_name || record.document_no || 'Unknown Department',
+    division_code: record.division_code || record.company_code || 'UNK',
+    division_name: record.division_name || record.company_code || 'UNKNOWN',
+    kode: record.department_code || record.division_code || record.company_code || 'UNK',
+    div: record.division_code || record.company_code || 'UNK',
+    direktorat: record.division_name || record.company_code || 'UNKNOWN',
+    departemen: record.department_name || record.division_name || record.account_name || record.document_no || 'Unknown Department',
+    anggaran_proposal_capex: 0,
+    anggaran_proposal_opex: 0,
+    anggaran_proposal_total: 0,
+    anggaran_realokasi_2025_capex: 0,
+    anggaran_realokasi_2025_opex: 0,
+    anggaran_realokasi_2025_total: 0,
+    realisasi_capex_total: 0,
+    opex_verifikasi_total: 0,
+    opex_ppa_spuk_kk_total: 0,
+    proforma_total: 0,
+    penyerapan_total: 0,
+    penyerapan_persen: 0,
+    sisa_anggaran_total: 0,
+    budget_control_available_total: 0,
+    budget_control_penyerapan_persen: null,
+  };
+}
+
+function buildFinanceDashboardContract(
+  budgetHeaders,
+  budgetLines,
+  ledgerActivities,
+  budgetControlStatistics,
+  options = {}
+) {
   const dashboard = createEmptyFinanceDashboardContract();
   const { availableYears, selectedYear } = getFinanceYearScope(options.selectedYear);
 
@@ -496,154 +818,139 @@ function buildFinanceDashboardContract(budgetHeaders, budgetLines, ledgerActivit
   }
 
   const departmentMap = new Map();
+  const ensureDepartmentRow = (record) => {
+    const key = buildDepartmentKey(record);
+    const row = departmentMap.get(key) || createDepartmentRow(record);
+    departmentMap.set(key, row);
+    return row;
+  };
+
+  const proposalHeaders = budgetHeaders.filter(
+    (record) =>
+      record.fiscal_year === selectedYear &&
+      isAllowedFinanceOrg(record) &&
+      (isScenarioRecord(record, PROPOSAL_TOKENS) || !isScenarioRecord(record, REVISION_TOKENS))
+  );
+
+  for (const record of proposalHeaders) {
+    const row = ensureDepartmentRow(record);
+    const proposalCapex = toNumber(record.proposal_capex_amount, 0);
+    const proposalOpex = toNumber(record.proposal_opex_amount, 0);
+    const proposalTotal =
+      toNumber(record.proposal_total_amount, 0) || proposalCapex + proposalOpex || toNumber(record.amount, 0);
+
+    row.anggaran_proposal_capex += proposalCapex;
+    row.anggaran_proposal_opex += proposalOpex;
+    row.anggaran_proposal_total += proposalTotal;
+  }
+
+  if (!proposalHeaders.length) {
+    for (const record of budgetLines) {
+      if (
+        record.fiscal_year !== selectedYear ||
+        !isAllowedFinanceOrg(record) ||
+        !isScenarioRecord(record, PROPOSAL_TOKENS)
+      ) {
+        continue;
+      }
+
+      const row = ensureDepartmentRow(record);
+      row.anggaran_proposal_total += toNumber(record.amount, 0);
+    }
+  }
+
+  const latestRevisionLines = selectLatestRevisionRecords(
+    budgetLines.filter((record) => record.fiscal_year === selectedYear && isAllowedFinanceOrg(record))
+  );
 
   for (const record of budgetHeaders) {
     if (record.fiscal_year !== selectedYear || !isAllowedFinanceOrg(record)) {
       continue;
     }
 
-    const key = buildDepartmentKey(record);
-    const row =
-      departmentMap.get(key) ||
-      {
-        department_code: record.department_code || record.division_code || record.company_code || 'UNK',
-        department_name:
-          record.department_name || record.division_name || record.document_no || 'Unknown Department',
-        division_code: record.division_code || record.company_code || 'UNK',
-        division_name: record.division_name || record.company_code || 'UNKNOWN',
-        kode: record.department_code || record.division_code || record.company_code || 'UNK',
-        div: record.division_code || record.company_code || 'UNK',
-        direktorat: record.division_name || record.company_code || 'UNKNOWN',
-        departemen:
-          record.department_name || record.division_name || record.document_no || 'Unknown Department',
-        anggaran_proposal_capex: 0,
-        anggaran_proposal_opex: 0,
-        anggaran_proposal_total: 0,
-        anggaran_realokasi_2025_capex: 0,
-        anggaran_realokasi_2025_opex: 0,
-        anggaran_realokasi_2025_total: 0,
-        realisasi_capex_total: 0,
-        opex_verifikasi_total: 0,
-        opex_ppa_spuk_kk_total: 0,
-        proforma_total: 0,
-        penyerapan_total: 0,
-        penyerapan_persen: 0,
-        sisa_anggaran_total: 0,
-      };
-
-    const proposalCapex = toNumber(record.proposal_capex_amount, 0);
-    const proposalOpex = toNumber(record.proposal_opex_amount, 0);
-    const proposalTotal =
-      toNumber(record.proposal_total_amount, 0) || proposalCapex + proposalOpex || toNumber(record.amount, 0);
-    const adjustedCapex = toNumber(record.adjusted_capex_amount, 0);
-    const adjustedOpex = toNumber(record.adjusted_opex_amount, 0);
-    const adjustedTotal = toNumber(record.adjusted_total_amount, 0);
-
-    row.anggaran_proposal_capex += proposalCapex;
-    row.anggaran_proposal_opex += proposalOpex;
-    row.anggaran_proposal_total += proposalTotal;
-
-    row.anggaran_realokasi_2025_capex += adjustedCapex;
-    row.anggaran_realokasi_2025_opex += adjustedOpex;
-    row.anggaran_realokasi_2025_total += adjustedTotal;
-
-    departmentMap.set(key, row);
+    const row = ensureDepartmentRow(record);
+    row.anggaran_realokasi_2025_capex += toNumber(record.adjusted_capex_amount, 0);
+    row.anggaran_realokasi_2025_opex += toNumber(record.adjusted_opex_amount, 0);
   }
 
-  if (departmentMap.size === 0) {
-    for (const record of budgetLines) {
+  if (latestRevisionLines.length) {
+    for (const record of latestRevisionLines) {
+      const row = ensureDepartmentRow(record);
+      row.anggaran_realokasi_2025_total += toNumber(record.amount, 0);
+    }
+  } else {
+    for (const record of budgetHeaders) {
       if (record.fiscal_year !== selectedYear || !isAllowedFinanceOrg(record)) {
         continue;
       }
 
-      const key = buildDepartmentKey(record);
-      const row =
-        departmentMap.get(key) ||
-        {
-          department_code: record.department_code || record.division_code || record.company_code || 'UNK',
-          department_name:
-            record.department_name || record.division_name || record.document_no || 'Unknown Department',
-          division_code: record.division_code || record.company_code || 'UNK',
-          division_name: record.division_name || record.company_code || 'UNKNOWN',
-          kode: record.department_code || record.division_code || record.company_code || 'UNK',
-          div: record.division_code || record.company_code || 'UNK',
-          direktorat: record.division_name || record.company_code || 'UNKNOWN',
-          departemen:
-            record.department_name || record.division_name || record.document_no || 'Unknown Department',
-          anggaran_proposal_capex: 0,
-          anggaran_proposal_opex: 0,
-          anggaran_proposal_total: 0,
-          anggaran_realokasi_2025_capex: 0,
-          anggaran_realokasi_2025_opex: 0,
-          anggaran_realokasi_2025_total: 0,
-          realisasi_capex_total: 0,
-          opex_verifikasi_total: 0,
-          opex_ppa_spuk_kk_total: 0,
-          proforma_total: 0,
-          penyerapan_total: 0,
-          penyerapan_persen: 0,
-          sisa_anggaran_total: 0,
-        };
-
-      const amount = toNumber(record.amount, 0);
-      row.anggaran_proposal_total += amount;
-
-      departmentMap.set(key, row);
+      const row = ensureDepartmentRow(record);
+      row.anggaran_realokasi_2025_total += toNumber(record.adjusted_total_amount, 0);
     }
   }
 
-  for (const record of ledgerActivities) {
+  for (const record of budgetControlStatistics) {
     if (record.fiscal_year !== selectedYear || !isAllowedFinanceOrg(record)) {
       continue;
     }
 
-    const key = buildDepartmentKey(record);
-    const row =
-      departmentMap.get(key) ||
-      {
-        department_code: record.department_code || record.division_code || record.company_code || 'UNK',
-        department_name:
-          record.department_name || record.division_name || record.account_name || 'Unknown Department',
-        division_code: record.division_code || record.company_code || 'UNK',
-        division_name: record.division_name || record.company_code || 'UNKNOWN',
-        kode: record.department_code || record.division_code || record.company_code || 'UNK',
-        div: record.division_code || record.company_code || 'UNK',
-        direktorat: record.division_name || record.company_code || 'UNKNOWN',
-        departemen:
-          record.department_name || record.division_name || record.account_name || 'Unknown Department',
-        anggaran_proposal_capex: 0,
-        anggaran_proposal_opex: 0,
-        anggaran_proposal_total: 0,
-        anggaran_realokasi_2025_capex: 0,
-        anggaran_realokasi_2025_opex: 0,
-        anggaran_realokasi_2025_total: 0,
-        realisasi_capex_total: 0,
-        opex_verifikasi_total: 0,
-        opex_ppa_spuk_kk_total: 0,
-        proforma_total: 0,
-        penyerapan_total: 0,
-        penyerapan_persen: 0,
-        sisa_anggaran_total: 0,
-      };
+    const row = ensureDepartmentRow(record);
+    const actualAmount = toNumber(record.actual_amount, 0);
 
-    // Actual bucket mapping is intentionally disabled until D365 provides
-    // a validated source field that separates CAPEX, verifikasi, and PPA/SPUK/KK.
-    departmentMap.set(key, row);
+    if (record.actual_bucket === 'CAPEX') {
+      row.realisasi_capex_total += actualAmount;
+    } else if (record.actual_bucket === 'VERIFIKASI') {
+      row.opex_verifikasi_total += actualAmount;
+    } else {
+      row.opex_ppa_spuk_kk_total += actualAmount;
+    }
+
+    row.budget_control_available_total += toNumber(record.available_amount, 0);
+
+    if (record.absorption_percent !== null && record.absorption_percent !== undefined) {
+      row.budget_control_penyerapan_persen = toNumber(record.absorption_percent, 0);
+    }
+  }
+
+  const hasBudgetControlActuals = budgetControlStatistics.some(
+    (record) => record.fiscal_year === selectedYear && isAllowedFinanceOrg(record)
+  );
+
+  if (!hasBudgetControlActuals) {
+    for (const record of ledgerActivities) {
+      if (record.fiscal_year !== selectedYear || !isAllowedFinanceOrg(record)) {
+        continue;
+      }
+
+      const row = ensureDepartmentRow(record);
+      const signedAmount = Math.abs(toNumber(record.amount, 0));
+
+      if (/^1\d*/.test(String(record.account_code || '').trim())) {
+        row.realisasi_capex_total += signedAmount;
+      } else {
+        row.opex_ppa_spuk_kk_total += signedAmount;
+      }
+    }
   }
 
   const departments = Array.from(departmentMap.values())
     .map((row) => {
       row.penyerapan_total =
         row.realisasi_capex_total + row.opex_verifikasi_total + row.opex_ppa_spuk_kk_total;
-      row.sisa_anggaran_total = row.anggaran_realokasi_2025_total - row.penyerapan_total;
+      row.sisa_anggaran_total =
+        row.budget_control_available_total > 0
+          ? row.budget_control_available_total
+          : row.anggaran_realokasi_2025_total - row.penyerapan_total;
       row.penyerapan_persen =
-        row.anggaran_realokasi_2025_total > 0
-          ? Number(((row.penyerapan_total / row.anggaran_realokasi_2025_total) * 100).toFixed(2))
-          : 0;
+        row.budget_control_penyerapan_persen !== null && row.budget_control_penyerapan_persen !== undefined
+          ? Number(row.budget_control_penyerapan_persen.toFixed(2))
+          : row.anggaran_realokasi_2025_total > 0
+            ? Number(((row.penyerapan_total / row.anggaran_realokasi_2025_total) * 100).toFixed(2))
+            : 0;
 
       return {
         ...row,
-        category: classifyFinanceCategory(row),
+        category: classifyBudgetControlCategory(row) || classifyFinanceCategory(row),
       };
     })
     .sort((a, b) => b.anggaran_realokasi_2025_total - a.anggaran_realokasi_2025_total);
@@ -712,15 +1019,21 @@ export function toFinancePreviewPayload(sourcePreview, options = {}) {
     dimensionCombinations: sourcePreview.DimensionCombinations?.records || [],
     ledgers: sourcePreview.Ledgers?.records || [],
   });
+  const budgetControlStatistics = normalizeBudgetControlStatistics(
+    sourcePreview['Budget Control Statistic']?.records || [],
+    syncAt
+  );
   const { availableYears, selectedYear } = getFinanceYearScope(options.selectedYear);
   const dashboardContract = buildFinanceDashboardContract(
     budgetHeaders,
     budgetLines,
     ledgerActivities,
+    budgetControlStatistics,
     { selectedYear }
   );
   const budgetLinesError = sourcePreview.KREBudgetPlanningEntriesLines.error || null;
   const ledgerError = sourcePreview.GeneralLedgerActivities.error || null;
+  const budgetControlError = sourcePreview['Budget Control Statistic']?.error || null;
   const warnings = [];
 
   if (budgetLinesError) {
@@ -737,6 +1050,15 @@ export function toFinancePreviewPayload(sourcePreview, options = {}) {
       entity: 'GeneralLedgerActivities',
       message: 'Entity ini gagal dimuat, sehingga actual/realisasi finance sementara diisi 0.',
       details: ledgerError.details || {},
+    });
+  }
+
+  if (budgetControlError) {
+    warnings.push({
+      entity: 'Budget Control Statistic',
+      message:
+        'Entity Budget Control Statistic gagal dimuat. Realisasi, persen penyerapan, dan sisa anggaran akan fallback ke source yang tersedia.',
+      details: budgetControlError.details || {},
     });
   }
 
@@ -759,6 +1081,7 @@ export function toFinancePreviewPayload(sourcePreview, options = {}) {
       BudgetPlanningEntries: sourcePreview.BudgetPlanningEntries.count,
       KREBudgetPlanningEntriesLines: sourcePreview.KREBudgetPlanningEntriesLines.count,
       GeneralLedgerActivities: sourcePreview.GeneralLedgerActivities.count,
+      'Budget Control Statistic': sourcePreview['Budget Control Statistic']?.count || 0,
     },
     canonical_schema: {
       budgetPlanFact: CANONICAL_SCHEMA.budgetPlanFact,
@@ -782,12 +1105,19 @@ export function toFinancePreviewPayload(sourcePreview, options = {}) {
         has_next_page: Boolean(sourcePreview.GeneralLedgerActivities.nextLink),
         error: ledgerError,
       },
+      'Budget Control Statistic': {
+        selected_fields: sourcePreview['Budget Control Statistic']?.selectedFields || [],
+        filter: sourcePreview['Budget Control Statistic']?.filter || '',
+        has_next_page: Boolean(sourcePreview['Budget Control Statistic']?.nextLink),
+        error: budgetControlError,
+      },
     },
     warnings,
     data: {
       budget_plan_headers: budgetHeaders,
       budget_plan_lines: budgetLines,
       ledger_activities: ledgerActivities,
+      budget_control_statistics: budgetControlStatistics,
       dashboard_contract: dashboardContract,
     },
   };

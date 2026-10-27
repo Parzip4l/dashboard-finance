@@ -40,6 +40,11 @@ function buildFinanceTableResponse(payload, limit) {
       label: 'GeneralLedgerActivities -> ledger_activities',
       rows: data.ledger_activities || [],
     },
+    {
+      key: 'budget_control_statistics',
+      label: 'Budget Control Statistic -> budget_control_statistics',
+      rows: data.budget_control_statistics || [],
+    },
   ];
 
   return {

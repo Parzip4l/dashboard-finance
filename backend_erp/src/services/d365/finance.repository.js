@@ -188,7 +188,11 @@ function buildAttemptTops(config) {
 }
 
 function isOptionalFinanceEntity(entityName) {
-  return entityName === 'KREBudgetPlanningEntriesLines' || entityName === 'GeneralLedgerActivities';
+  return (
+    entityName === 'KREBudgetPlanningEntriesLines' ||
+    entityName === 'GeneralLedgerActivities' ||
+    entityName === 'Budget Control Statistic'
+  );
 }
 
 function buildFinanceSelect(entityName, config) {
@@ -196,41 +200,75 @@ function buildFinanceSelect(entityName, config) {
     return config.select;
   }
 
-  if (entityName !== 'GeneralLedgerActivities') {
-    return config.select;
+  if (entityName === 'GeneralLedgerActivities') {
+    return [
+      'LedgerDimension',
+      'MainAccountRecId',
+      'Ledger',
+      'PostingLayer',
+      'LedgerGregorianDateId',
+      'AccountingCurrencyAmount',
+      'AnalysisCurrencyAmount',
+      'ReportingCurrencyAmount',
+      'YearOffset',
+      'TotalRevenue',
+      'AccountsPayable',
+      'QuickRatioAssets',
+      'CurrentRatioAssets',
+      'Liabilities',
+      'ReturnOnTotalAssetsExpenses',
+      'SalesReturnAndDiscounts',
+      'AccountsReceivable',
+      'Cash',
+      'TotalAssets',
+      'Equity',
+      'CurrentLiabilities',
+      'OperatingExpenses',
+      'ProfitMarginTaxes',
+      'Sales',
+      'SalesPlusReturnsAndDiscounts',
+      'CostOfGoodsSold',
+      'AdditionalEarnings',
+      'Expenses',
+      'Income',
+    ];
   }
 
-  return [
-    'LedgerDimension',
-    'MainAccountRecId',
-    'Ledger',
-    'PostingLayer',
-    'LedgerGregorianDateId',
-    'AccountingCurrencyAmount',
-    'AnalysisCurrencyAmount',
-    'ReportingCurrencyAmount',
-    'YearOffset',
-    'TotalRevenue',
-    'AccountsPayable',
-    'QuickRatioAssets',
-    'CurrentRatioAssets',
-    'Liabilities',
-    'ReturnOnTotalAssetsExpenses',
-    'SalesReturnAndDiscounts',
-    'AccountsReceivable',
-    'Cash',
-    'TotalAssets',
-    'Equity',
-    'CurrentLiabilities',
-    'OperatingExpenses',
-    'ProfitMarginTaxes',
-    'Sales',
-    'SalesPlusReturnsAndDiscounts',
-    'CostOfGoodsSold',
-    'AdditionalEarnings',
-    'Expenses',
-    'Income',
-  ];
+  if (entityName === 'Budget Control Statistic') {
+    return [
+      'Year',
+      'DataAreaId',
+      'LedgerDimension',
+      'LedgerDimensionDisplayValue',
+      'DefaultDimensionDisplayValue',
+      'MainAccount',
+      'MainAccountId',
+      'MainAccountName',
+      'ApprovalStatus',
+      'Version',
+      'VersionNumber',
+      'RevisionNumber',
+      'BudgetModel',
+      'BudgetCode',
+      'RAB',
+      'RABCode',
+      'TotalBudgetFundsAvailable',
+      'BudgetFundsAvailable',
+      'AvailableBudgetFunds',
+      'ConsumedAmount',
+      'ActualAmount',
+      'Amount',
+      'Percentage',
+      'UtilizationPercent',
+      'ActDepartment',
+      'ActDepartmentCode',
+      'ActDivision',
+      'DepartmentName',
+      'DivisionName',
+    ];
+  }
+
+  return config.select;
 }
 
 async function fetchFinanceEntityWithFallback(entityName, selectedYear = null) {
@@ -334,6 +372,7 @@ export async function getFinanceSourcePreview(selectedYear = null) {
     'BudgetPlanningEntries',
     'KREBudgetPlanningEntriesLines',
     'GeneralLedgerActivities',
+    'Budget Control Statistic',
   ];
 
   const previews = await Promise.all(

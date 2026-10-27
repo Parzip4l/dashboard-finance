@@ -15,6 +15,11 @@ const ERP_SOURCE_TABLES = Object.freeze({
       envPrefix: 'D365_GENERAL_LEDGER_ACTIVITIES',
       purpose: 'Aktivitas ledger untuk rasio penyerapan dan realisasi akuntansi.',
     },
+    {
+      entity: 'Budget Control Statistic',
+      envPrefix: 'D365_BUDGET_CONTROL_STATISTIC',
+      purpose: 'Statistik budget control untuk realisasi, penyerapan, dan sisa anggaran.',
+    },
   ],
   procurement: [
     {
